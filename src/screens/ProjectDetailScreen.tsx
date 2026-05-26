@@ -31,7 +31,7 @@ const TYPE_LABELS: Record<string, string> = {
 type Tab = 'overview' | 'tasks' | 'notes' | 'files';
 
 export default function ProjectDetailScreen({ route, navigation }: any) {
-  const { projectId } = route.params;
+  const { projectId, initialTab } = route.params;
   const { refreshProjects } = useAppContext();
   const theme = useTheme();
   const styles = createStyles(theme);
@@ -41,7 +41,7 @@ export default function ProjectDetailScreen({ route, navigation }: any) {
   const [, setNote] = useState<Note | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [activeTab, setActiveTab] = useState<Tab>(() => isTab(initialTab) ? initialTab : 'overview');
   const [newTask, setNewTask] = useState('');
   const [noteText, setNoteText] = useState('');
   const noteSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -62,6 +62,12 @@ export default function ProjectDetailScreen({ route, navigation }: any) {
   }, [projectId]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  useEffect(() => {
+    if (isTab(initialTab)) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   useEffect(() => {
     navigation.setOptions({
@@ -395,6 +401,10 @@ export default function ProjectDetailScreen({ route, navigation }: any) {
       </View>
     </View>
   );
+}
+
+function isTab(value: unknown): value is Tab {
+  return value === 'overview' || value === 'tasks' || value === 'notes' || value === 'files';
 }
 
 
