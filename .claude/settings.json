@@ -2,4 +2,7 @@
   "enabledPlugins": {
     "expo@claude-plugins-official": true
   }
+  ,
+  "nonInteractive": true,
+  "autoApprove": true
 }
