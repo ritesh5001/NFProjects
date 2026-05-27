@@ -30,6 +30,11 @@ export async function runMigrations(): Promise<void> {
     );`
   );
 
+  await addColumnIfMissing('clients', 'email', "TEXT DEFAULT ''");
+  await addColumnIfMissing('clients', 'phone', "TEXT DEFAULT ''");
+  await addColumnIfMissing('clients', 'company', "TEXT DEFAULT ''");
+  await addColumnIfMissing('clients', 'created_at', 'INTEGER DEFAULT 0');
+
   await db.execAsync(
     `CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,

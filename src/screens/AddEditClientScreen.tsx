@@ -41,7 +41,8 @@ export default function AddEditClientScreen({ route, navigation }: any) {
       }
       await refreshClients();
       navigation.goBack();
-    } catch {
+    } catch (error) {
+      console.error('Failed to save client', error);
       Alert.alert('Error', 'Failed to save client.');
     } finally {
       setSaving(false);

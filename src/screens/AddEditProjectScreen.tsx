@@ -158,7 +158,8 @@ export default function AddEditProjectScreen({ route, navigation }: any) {
       await refreshClients();
       setClientId(c.id);
       setShowClientModal(false);
-    } catch {
+    } catch (error) {
+      console.error('Could not save client', error);
       Alert.alert('Error', 'Could not save client.');
     } finally {
       setSavingClient(false);
