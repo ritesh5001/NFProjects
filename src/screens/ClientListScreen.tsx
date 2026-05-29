@@ -8,7 +8,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAppContext } from '../context/AppContext';
-import { deleteClient, getClientProjectCount } from '../database/clients';
+import { deleteClient, getClientProjectCount } from '../api/clients';
 import EmptyState from '../components/EmptyState';
 import { Client } from '../types';
 import { useTheme, AppTheme } from '../theme/theme';

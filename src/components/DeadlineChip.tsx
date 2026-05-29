@@ -10,7 +10,7 @@ interface Props {
 
 export default function DeadlineChip({ deadline, status }: Props) {
   const theme = useTheme();
-  if (status === 'completed' || status === 'cancelled') return null;
+  if (status === 'completed' || status === 'cancelled' || status === 'delivered') return null;
 
   const overdue = isOverdue(deadline);
   const urgent = !overdue && daysUntil(deadline) <= 3;

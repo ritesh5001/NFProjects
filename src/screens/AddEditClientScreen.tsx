@@ -4,7 +4,7 @@ import {
   StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getClient, addClient, updateClient } from '../database/clients';
+import { getClient, addClient, updateClient } from '../api/clients';
 import { useAppContext } from '../context/AppContext';
 import { useTheme, AppTheme } from '../theme/theme';
 
@@ -20,6 +20,7 @@ export default function AddEditClientScreen({ route, navigation }: any) {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [company, setCompany] = useState('');
+  const [password, setPassword] = useState('');
 
   useEffect(() => {
     if (clientId) {
@@ -32,18 +33,22 @@ export default function AddEditClientScreen({ route, navigation }: any) {
 
   async function handleSave() {
     if (!name.trim()) { Alert.alert('Validation', 'Client name is required.'); return; }
+    if (!clientId) {
+      if (!email.trim()) { Alert.alert('Validation', 'Email is required to create a client login.'); return; }
+      if (password.length < 8) { Alert.alert('Validation', 'Set a login password of at least 8 characters.'); return; }
+    }
     setSaving(true);
     try {
       if (clientId) {
         await updateClient(clientId, { name: name.trim(), email: email.trim(), phone: phone.trim(), company: company.trim() });
       } else {
-        await addClient({ name: name.trim(), email: email.trim(), phone: phone.trim(), company: company.trim() });
+        await addClient({ name: name.trim(), email: email.trim(), phone: phone.trim(), company: company.trim(), password });
       }
       await refreshClients();
       navigation.goBack();
     } catch (error) {
       console.error('Failed to save client', error);
-      Alert.alert('Error', 'Failed to save client.');
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to save client.');
     } finally {
       setSaving(false);
     }
@@ -73,6 +78,21 @@ export default function AddEditClientScreen({ route, navigation }: any) {
         </View>
       ))}
 
+      {!clientId && (
+        <View>
+          <Text style={styles.label}>Login password *</Text>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="At least 8 characters"
+            placeholderTextColor={theme.colors.textSubtle}
+            autoCapitalize="none"
+          />
+          <Text style={styles.hint}>The client uses their email + this password to log in to the portal.</Text>
+        </View>
+      )}
+
       <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
         <LinearGradient colors={theme.gradients.primary} style={styles.saveBtnGradient}>
           {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Client</Text>}
@@ -87,6 +107,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   container: { padding: 16, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   label: { fontSize: 13, fontWeight: '600', color: theme.colors.textMuted, marginBottom: 6, marginTop: 14 },
+  hint: { fontSize: 11, color: theme.colors.textSubtle, marginTop: 6 },
   input: {
     backgroundColor: theme.colors.surfaceElevated,
     borderRadius: 10,

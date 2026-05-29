@@ -5,6 +5,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemePreference, useAppContext } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { NotificationSettings } from '../types';
 import { requestNotificationPermission } from '../notifications/scheduler';
 import { useTheme, AppTheme } from '../theme/theme';
@@ -12,8 +13,16 @@ import { useTheme, AppTheme } from '../theme/theme';
 export default function SettingsScreen() {
   const { state, dispatch } = useAppContext();
   const { notifSettings, theme } = state;
+  const { logout } = useAuth();
   const appTheme = useTheme();
   const styles = createStyles(appTheme);
+
+  function handleSignOut() {
+    Alert.alert('Sign out', 'Sign out of the admin account?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: () => { logout(); } },
+    ]);
+  }
 
   async function updateNotifSettings(patch: Partial<NotificationSettings>) {
     const updated = { ...notifSettings, ...patch };
@@ -113,6 +122,14 @@ export default function SettingsScreen() {
         <Row icon="briefcase" label="NF Projects" value="v1.0.0" />
         <Row icon="web" label="NextGen Fusion" value="nextgenfusion.in" />
         <Row icon="code-tags" label="Built with Expo + React Native" />
+      </View>
+
+      <Text style={styles.section}>Account</Text>
+      <View style={styles.card}>
+        <TouchableOpacity style={styles.row} onPress={handleSignOut} activeOpacity={0.7}>
+          <MaterialCommunityIcons name="logout" size={20} color={appTheme.colors.danger} style={styles.rowIcon} />
+          <Text style={[styles.rowLabel, { color: appTheme.colors.danger }]}>Sign out</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );

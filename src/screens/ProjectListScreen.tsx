@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   StyleSheet, RefreshControl,
@@ -10,21 +10,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAppContext } from '../context/AppContext';
 import ProjectCard from '../components/ProjectCard';
 import EmptyState from '../components/EmptyState';
-import { getTasksByProject } from '../database/tasks';
-import { deleteProject } from '../database/projects';
-import { cancelProjectReminders } from '../notifications/scheduler';
-import { ProjectStatus } from '../types';
+import { deleteProject, toTs } from '../api/projects';
 import { isOverdue } from '../utils/dateUtils';
 import { useTheme, AppTheme } from '../theme/theme';
 
-type FilterTab = 'all' | ProjectStatus | 'overdue';
+type FilterTab = 'all' | 'active' | 'overdue' | 'delivered' | 'on_hold';
+
+const ACTIVE_STATUSES = ['kickoff', 'in_progress', 'client_review', 'revisions'];
 
 const TABS: { value: FilterTab; label: string }[] = [
   { value: 'all', label: 'All' },
-  { value: 'ongoing', label: 'Ongoing' },
+  { value: 'active', label: 'Active' },
   { value: 'overdue', label: 'Overdue' },
-  { value: 'completed', label: 'Done' },
-  { value: 'paused', label: 'Paused' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'on_hold', label: 'On Hold' },
 ];
 
 export default function ProjectListScreen({ navigation }: any) {
@@ -33,31 +32,23 @@ export default function ProjectListScreen({ navigation }: any) {
   const styles = createStyles(theme);
   const [filter, setFilter] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
-  const [taskStatsMap, setTaskStatsMap] = useState<Record<string, { completed: number; total: number }>>({});
   const [refreshing, setRefreshing] = useState(false);
 
   useFocusEffect(useCallback(() => { refreshProjects(); }, [refreshProjects]));
 
-  useEffect(() => {
-    async function loadStats() {
-      const map: Record<string, { completed: number; total: number }> = {};
-      await Promise.all(
-        state.projects.map(async p => {
-          const tasks = await getTasksByProject(p.id);
-          map[p.id] = { total: tasks.length, completed: tasks.filter(t => t.is_completed).length };
-        })
-      );
-      setTaskStatsMap(map);
-    }
-    if (state.projects.length > 0) loadStats();
-  }, [state.projects]);
-
   const filtered = useMemo(() => {
     let list = state.projects;
-    if (filter === 'overdue') {
-      list = list.filter(p => p.status === 'ongoing' && isOverdue(p.deadline));
-    } else if (filter !== 'all') {
-      list = list.filter(p => p.status === filter);
+    if (filter === 'active') {
+      list = list.filter(p => ACTIVE_STATUSES.includes(p.status));
+    } else if (filter === 'overdue') {
+      list = list.filter(p => {
+        const ts = toTs(p.deadline);
+        return ACTIVE_STATUSES.includes(p.status) && ts != null && isOverdue(ts);
+      });
+    } else if (filter === 'delivered') {
+      list = list.filter(p => p.status === 'delivered');
+    } else if (filter === 'on_hold') {
+      list = list.filter(p => p.status === 'on_hold');
     }
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -78,9 +69,8 @@ export default function ProjectListScreen({ navigation }: any) {
   function handleDelete(id: string, title: string) {
     confirmDelete(
       'Delete Project',
-      `Delete "${title}"? This will also remove all its tasks, notes, and attachments.`,
+      `Delete "${title}"? This removes it for everyone (website + app).`,
       async () => {
-        cancelProjectReminders(id).catch(() => {});
         await deleteProject(id);
         await refreshProjects();
       }
@@ -127,7 +117,6 @@ export default function ProjectListScreen({ navigation }: any) {
         renderItem={({ item }) => (
           <ProjectCard
             project={item}
-            taskStats={taskStatsMap[item.id]}
             onPress={() => navigation.navigate('ProjectDetail', { projectId: item.id })}
             onDelete={() => handleDelete(item.id, item.title)}
           />
@@ -173,6 +162,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 8,
     gap: 6,
+    flexWrap: 'wrap',
   },
   tab: {
     paddingHorizontal: 12,

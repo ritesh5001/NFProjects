@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Project, Client, NotificationSettings } from '../types';
-import { getProjects } from '../database/projects';
-import { getClients } from '../database/clients';
+import { Client, NotificationSettings } from '../types';
+import { AgencyProject, getProjects } from '../api/projects';
+import { getClients } from '../api/clients';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -14,7 +14,7 @@ const DEFAULT_NOTIF_SETTINGS: NotificationSettings = {
 };
 
 interface AppState {
-  projects: Project[];
+  projects: AgencyProject[];
   clients: Client[];
   notifSettings: NotificationSettings;
   theme: ThemePreference;
@@ -22,7 +22,7 @@ interface AppState {
 }
 
 type Action =
-  | { type: 'SET_PROJECTS'; payload: Project[] }
+  | { type: 'SET_PROJECTS'; payload: AgencyProject[] }
   | { type: 'SET_CLIENTS'; payload: Client[] }
   | { type: 'SET_NOTIF_SETTINGS'; payload: NotificationSettings }
   | { type: 'SET_THEME'; payload: ThemePreference }

@@ -4,7 +4,9 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { runMigrations } from './src/database/db';
 import { AppProvider } from './src/context/AppContext';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import LoginScreen from './src/screens/LoginScreen';
 import { useTheme } from './src/theme/theme';
 
 export default function App() {
@@ -28,7 +30,9 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <AppProvider>
-        <AppShell />
+        <AuthProvider>
+          <AppShell />
+        </AuthProvider>
       </AppProvider>
     </GestureHandlerRootView>
   );
@@ -36,11 +40,20 @@ export default function App() {
 
 function AppShell() {
   const theme = useTheme();
+  const { ready, token } = useAuth();
+
+  if (!ready) {
+    return (
+      <View style={styles.splash}>
+        <ActivityIndicator size="large" color="#1A73E8" />
+      </View>
+    );
+  }
 
   return (
     <>
       <StatusBar style={theme.isDark ? 'light' : 'dark'} />
-      <AppNavigator />
+      {token ? <AppNavigator /> : <LoginScreen />}
     </>
   );
 }

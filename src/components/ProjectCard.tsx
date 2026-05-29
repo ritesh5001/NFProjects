@@ -1,30 +1,21 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Project } from '../types';
 import StatusBadge from './StatusBadge';
 import DeadlineChip from './DeadlineChip';
-import ProgressBar from './ProgressBar';
 import { formatDate } from '../utils/dateUtils';
 import { useTheme, AppTheme } from '../theme/theme';
+import { AgencyProject, toTs } from '../api/projects';
 
 interface Props {
-  project: Project;
-  taskStats?: { completed: number; total: number };
+  project: AgencyProject;
   onPress: () => void;
   onDelete?: () => void;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  website: 'Website',
-  app: 'Mobile App',
-  both: 'Web + App',
-  other: 'Other',
-};
-
-export default function ProjectCard({ project, taskStats, onPress, onDelete }: Props) {
+export default function ProjectCard({ project, onPress, onDelete }: Props) {
   const theme = useTheme();
   const styles = createStyles(theme);
-  const pending = project.budget_quoted - project.budget_received;
+  const deadlineTs = toTs(project.deadline);
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
@@ -45,25 +36,21 @@ export default function ProjectCard({ project, taskStats, onPress, onDelete }: P
           </View>
         </View>
         <View style={styles.meta}>
-          <Text style={styles.metaText}>
-            {project.client_name || 'No client'} · {TYPE_LABELS[project.type] || project.type}
+          <Text style={styles.metaText} numberOfLines={1}>
+            {project.client_name || 'No client'}
+            {project.project_type ? ` · ${project.project_type}` : ''}
           </Text>
-          <DeadlineChip deadline={project.deadline} status={project.status} />
+          {deadlineTs != null && <DeadlineChip deadline={deadlineTs} status={project.status} />}
         </View>
       </View>
 
-      {taskStats && taskStats.total > 0 && (
-        <View style={styles.progressRow}>
-          <Text style={styles.progressLabel}>Progress</Text>
-          <ProgressBar completed={taskStats.completed} total={taskStats.total} />
-        </View>
-      )}
-
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Deadline: {formatDate(project.deadline)}</Text>
-        {project.budget_quoted > 0 && (
-          <Text style={[styles.footerText, pending > 0 && styles.pendingText]}>
-            {pending > 0 ? `₹${pending.toLocaleString('en-IN')} pending` : 'Paid ✓'}
+        <Text style={styles.footerText}>
+          {deadlineTs != null ? `Deadline: ${formatDate(deadlineTs)}` : 'No deadline'}
+        </Text>
+        {project.budget != null && project.budget > 0 && (
+          <Text style={styles.footerText}>
+            {(project.currency || 'INR')} {project.budget.toLocaleString('en-IN')}
           </Text>
         )}
       </View>
@@ -92,11 +79,8 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   titleActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
   deleteBtn: { padding: 2 },
   title: { fontSize: 15, fontWeight: '700', color: theme.colors.text, flex: 1 },
-  meta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  meta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   metaText: { fontSize: 12, color: theme.colors.textMuted, flex: 1 },
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  progressLabel: { fontSize: 11, color: theme.colors.textSubtle, width: 52 },
   footer: { flexDirection: 'row', justifyContent: 'space-between' },
   footerText: { fontSize: 11, color: theme.colors.textSubtle },
-  pendingText: { color: theme.colors.warning, fontWeight: '600' },
 });

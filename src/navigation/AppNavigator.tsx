@@ -12,6 +12,14 @@ import AddEditProjectScreen from '../screens/AddEditProjectScreen';
 import ClientListScreen from '../screens/ClientListScreen';
 import AddEditClientScreen from '../screens/AddEditClientScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import MoreScreen from '../screens/MoreScreen';
+import ContactsScreen from '../screens/admin/ContactsScreen';
+import LeadsScreen from '../screens/admin/LeadsScreen';
+import CampaignsScreen from '../screens/admin/CampaignsScreen';
+import BookingsScreen from '../screens/admin/BookingsScreen';
+import ChatbotScreen from '../screens/admin/ChatbotScreen';
+import EstimatesScreen from '../screens/admin/EstimatesScreen';
+import FormsScreen from '../screens/admin/FormsScreen';
 import { useTheme } from '../theme/theme';
 
 const Tab = createBottomTabNavigator();
@@ -72,6 +80,22 @@ function HomeStack() {
   );
 }
 
+function MoreStack() {
+  const theme = useTheme();
+  return (
+    <Stack.Navigator screenOptions={stackOptions(theme)}>
+      <Stack.Screen name="MoreMenu" component={MoreScreen} options={{ title: 'More' }} />
+      <Stack.Screen name="Contacts" component={ContactsScreen} options={{ title: 'Email Contacts' }} />
+      <Stack.Screen name="Leads" component={LeadsScreen} options={{ title: 'B2B Leads' }} />
+      <Stack.Screen name="Campaigns" component={CampaignsScreen} options={{ title: 'Campaigns' }} />
+      <Stack.Screen name="Bookings" component={BookingsScreen} options={{ title: 'Booking Requests' }} />
+      <Stack.Screen name="Chatbot" component={ChatbotScreen} options={{ title: 'Chatbot Chats' }} />
+      <Stack.Screen name="Estimates" component={EstimatesScreen} options={{ title: 'Estimator Leads' }} />
+      <Stack.Screen name="Forms" component={FormsScreen} options={{ title: 'Form Submissions' }} />
+    </Stack.Navigator>
+  );
+}
+
 export default function AppNavigator() {
   const theme = useTheme();
   const navigationTheme = {
@@ -110,6 +134,7 @@ export default function AppNavigator() {
               HomeTab: 'home',
               ProjectsTab: 'briefcase',
               ClientsTab: 'account-group',
+              MoreTab: 'view-grid',
               SettingsTab: 'cog',
             };
             return <MaterialCommunityIcons name={(icons[route.name] ?? 'circle') as any} size={size} color={color} />;
@@ -119,6 +144,7 @@ export default function AppNavigator() {
         <Tab.Screen name="HomeTab" component={HomeStack} options={{ title: 'Home' }} />
         <Tab.Screen name="ProjectsTab" component={ProjectsStack} options={{ title: 'Projects' }} />
         <Tab.Screen name="ClientsTab" component={ClientsStack} options={{ title: 'Clients' }} />
+        <Tab.Screen name="MoreTab" component={MoreStack} options={{ title: 'More' }} />
         <Tab.Screen
           name="SettingsTab"
           component={SettingsScreen}

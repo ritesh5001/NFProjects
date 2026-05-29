@@ -6,33 +6,34 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getProject, addProject, updateProject } from '../database/projects';
-import { addTask, getTasksByProject } from '../database/tasks';
-import { addClient } from '../database/clients';
-import { scheduleDeadlineReminders } from '../notifications/scheduler';
 import { useAppContext } from '../context/AppContext';
-import { ProjectType, ProjectStatus, WebsiteCategory, WebsitePlatform } from '../types';
-import { formatDate } from '../utils/dateUtils';
+import { addClient } from '../api/clients';
 import {
-  getWebsiteChecklist,
-  WEBSITE_CATEGORY_OPTIONS,
-  WEBSITE_PLATFORM_OPTIONS,
-} from '../utils/projectProgress';
+  AgencyStatus, AgencyPriority, getProject, createProject, updateProject, listMembers, AgencyMember,
+} from '../api/projects';
+import { formatDate } from '../utils/dateUtils';
 import { useTheme, AppTheme } from '../theme/theme';
 
-const PROJECT_TYPES: { value: ProjectType; label: string }[] = [
-  { value: 'website', label: 'Website' },
-  { value: 'app', label: 'Mobile App' },
-  { value: 'both', label: 'Web + App' },
-  { value: 'other', label: 'Other' },
-];
-
-const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
-  { value: 'ongoing', label: 'Ongoing' },
-  { value: 'paused', label: 'Paused' },
-  { value: 'completed', label: 'Completed' },
+const STATUSES: { value: AgencyStatus; label: string }[] = [
+  { value: 'kickoff', label: 'Kickoff' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'client_review', label: 'Client Review' },
+  { value: 'revisions', label: 'Revisions' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'on_hold', label: 'On Hold' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
+
+const PRIORITIES: { value: AgencyPriority; label: string }[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'urgent', label: 'Urgent' },
+];
+
+const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED'];
+
+function toDateInput(d: Date) { return d.toISOString().slice(0, 10); }
 
 export default function AddEditProjectScreen({ route, navigation }: any) {
   const { projectId } = route.params ?? {};
@@ -43,94 +44,98 @@ export default function AddEditProjectScreen({ route, navigation }: any) {
   const [saving, setSaving] = useState(false);
 
   const [title, setTitle] = useState('');
-  const [type, setType] = useState<ProjectType>('website');
-  const [status, setStatus] = useState<ProjectStatus>('ongoing');
-  const [websiteCategory, setWebsiteCategory] = useState<WebsiteCategory>('ecommerce');
-  const [websitePlatform, setWebsitePlatform] = useState<WebsitePlatform>('wordpress');
+  const [status, setStatus] = useState<AgencyStatus>('kickoff');
+  const [priority, setPriority] = useState<AgencyPriority>('medium');
+  const [projectType, setProjectType] = useState('');
   const [clientId, setClientId] = useState('');
+  const [clientName, setClientName] = useState('');
   const [startDate, setStartDate] = useState(new Date());
-  const [deadline, setDeadline] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() + 30); return d;
-  });
-  const [budgetQuoted, setBudgetQuoted] = useState('');
-  const [budgetReceived, setBudgetReceived] = useState('');
+  const [deadline, setDeadline] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 30); return d; });
+  const [hasDeadline, setHasDeadline] = useState(true);
+  const [budget, setBudget] = useState('');
+  const [currency, setCurrency] = useState('INR');
   const [description, setDescription] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const [members, setMembers] = useState<AgencyMember[]>([]);
+  const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
 
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [showClientModal, setShowClientModal] = useState(false);
   const [addingClient, setAddingClient] = useState(false);
-  const [newClientName, setNewClientName] = useState('');
-  const [newClientCompany, setNewClientCompany] = useState('');
-  const [newClientPhone, setNewClientPhone] = useState('');
-  const [newClientEmail, setNewClientEmail] = useState('');
+  const [ncName, setNcName] = useState('');
+  const [ncCompany, setNcCompany] = useState('');
+  const [ncPhone, setNcPhone] = useState('');
+  const [ncEmail, setNcEmail] = useState('');
+  const [ncPassword, setNcPassword] = useState('');
   const [savingClient, setSavingClient] = useState(false);
+
+  useEffect(() => {
+    listMembers().then(setMembers).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (projectId) {
       getProject(projectId).then(p => {
         if (p) {
           setTitle(p.title);
-          setType(p.type);
           setStatus(p.status);
-          if (p.website_category) setWebsiteCategory(p.website_category);
-          if (p.website_platform) setWebsitePlatform(p.website_platform);
-          setClientId(p.client_id);
-          setStartDate(new Date(p.start_date));
-          setDeadline(new Date(p.deadline));
-          setBudgetQuoted(p.budget_quoted > 0 ? String(p.budget_quoted) : '');
-          setBudgetReceived(p.budget_received > 0 ? String(p.budget_received) : '');
-          setDescription(p.description);
+          setPriority(p.priority);
+          setProjectType(p.project_type ?? '');
+          setClientId(p.client_id ?? '');
+          setClientName(p.client_name ?? '');
+          if (p.start_date) setStartDate(new Date(p.start_date));
+          if (p.deadline) { setDeadline(new Date(p.deadline)); setHasDeadline(true); } else setHasDeadline(false);
+          setBudget(p.budget != null && p.budget > 0 ? String(p.budget) : '');
+          setCurrency(p.currency || 'INR');
+          setDescription(p.description ?? '');
+          setNotes(p.notes ?? '');
         }
         setLoading(false);
-      });
+      }).catch(() => setLoading(false));
     }
   }, [projectId]);
 
   const selectedClient = state.clients.find(c => c.id === clientId);
-  const isWebsiteProject = type === 'website' || type === 'both';
-  const suggestedChecklist = getWebsiteChecklist(websiteCategory);
+
+  function toggleMember(id: string) {
+    setSelectedMembers(s => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   async function handleSave() {
     if (!title.trim()) { Alert.alert('Validation', 'Project title is required.'); return; }
-    if (deadline <= startDate) { Alert.alert('Validation', 'Deadline must be after start date.'); return; }
     setSaving(true);
     try {
-      const websiteCategoryValue: WebsiteCategory | '' = isWebsiteProject ? websiteCategory : '';
-      const websitePlatformValue: WebsitePlatform | '' = isWebsiteProject ? websitePlatform : '';
-      const data = {
+      const body = {
         title: title.trim(),
-        type,
+        client_id: clientId || null,
+        client_name: (selectedClient?.name || clientName || 'Client').trim(),
+        client_email: selectedClient?.email,
+        client_company: selectedClient?.company,
         status,
-        client_id: clientId,
-        start_date: startDate.getTime(),
-        deadline: deadline.getTime(),
-        budget_quoted: parseFloat(budgetQuoted) || 0,
-        budget_received: parseFloat(budgetReceived) || 0,
-        website_category: websiteCategoryValue,
-        website_platform: websitePlatformValue,
+        priority,
+        project_type: projectType.trim(),
+        start_date: toDateInput(startDate),
+        deadline: hasDeadline ? toDateInput(deadline) : null,
+        budget: budget ? parseFloat(budget) : undefined,
+        currency,
         description: description.trim(),
+        notes: notes.trim(),
       };
-      let savedProject;
-      const isNewProject = !projectId;
       if (projectId) {
-        await updateProject(projectId, data);
-        savedProject = { id: projectId, ...data };
+        await updateProject(projectId, body);
       } else {
-        savedProject = await addProject(data);
+        await createProject({ ...body, member_ids: Array.from(selectedMembers) });
       }
-      const shouldCreateChecklist = isNewProject || (projectId && (await getTasksByProject(projectId)).length === 0);
-      if (isWebsiteProject && shouldCreateChecklist) {
-        for (const item of suggestedChecklist) {
-          await addTask(savedProject.id, item);
-        }
-      }
-      // notifications are best-effort; don't let them block the save
-      scheduleDeadlineReminders(savedProject as any, state.notifSettings).catch(() => {});
       await refreshProjects();
       navigation.goBack();
     } catch (e) {
-      Alert.alert('Error', 'Failed to save project. Please try again.');
+      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to save project.');
     } finally {
       setSaving(false);
     }
@@ -138,29 +143,25 @@ export default function AddEditProjectScreen({ route, navigation }: any) {
 
   function openClientModal() {
     setAddingClient(false);
-    setNewClientName('');
-    setNewClientCompany('');
-    setNewClientPhone('');
-    setNewClientEmail('');
+    setNcName(''); setNcCompany(''); setNcPhone(''); setNcEmail(''); setNcPassword('');
     setShowClientModal(true);
   }
 
   async function handleAddClient() {
-    if (!newClientName.trim()) { Alert.alert('Validation', 'Client name is required.'); return; }
+    if (!ncEmail.trim()) { Alert.alert('Validation', 'Email is required.'); return; }
+    if (ncPassword.length < 8) { Alert.alert('Validation', 'Password must be at least 8 characters.'); return; }
     setSavingClient(true);
     try {
       const c = await addClient({
-        name: newClientName.trim(),
-        company: newClientCompany.trim(),
-        phone: newClientPhone.trim(),
-        email: newClientEmail.trim(),
+        name: ncName.trim(), company: ncCompany.trim(), phone: ncPhone.trim(),
+        email: ncEmail.trim(), password: ncPassword,
       });
       await refreshClients();
       setClientId(c.id);
+      setClientName(c.name);
       setShowClientModal(false);
     } catch (error) {
-      console.error('Could not save client', error);
-      Alert.alert('Error', 'Could not save client.');
+      Alert.alert('Error', error instanceof Error ? error.message : 'Could not create client.');
     } finally {
       setSavingClient(false);
     }
@@ -171,176 +172,113 @@ export default function AddEditProjectScreen({ route, navigation }: any) {
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <Text style={styles.label}>Project Title *</Text>
-      <TextInput
-        style={styles.input}
-        value={title}
-        onChangeText={setTitle}
-        placeholder="e.g. E-commerce Website for ABC"
-        placeholderTextColor={theme.colors.textSubtle}
-      />
+      <TextInput style={styles.input} value={title} onChangeText={setTitle}
+        placeholder="e.g. Website Redesign for ABC" placeholderTextColor={theme.colors.textSubtle} />
 
-      <Text style={styles.label}>Project Type</Text>
-      <View style={styles.segmentRow}>
-        {PROJECT_TYPES.map(pt => (
-          <TouchableOpacity
-            key={pt.value}
-            style={[styles.segment, type === pt.value && styles.segmentActive]}
-            onPress={() => setType(pt.value)}
-          >
-            <Text style={[styles.segmentText, type === pt.value && styles.segmentTextActive]}>
-              {pt.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {isWebsiteProject && (
-        <View style={styles.websiteBox}>
-          <View style={styles.websiteHeader}>
-            <MaterialCommunityIcons name="web" size={18} color={theme.colors.primary} />
-            <Text style={styles.websiteTitle}>Website Details</Text>
-          </View>
-
-          <Text style={styles.label}>What is in the project?</Text>
-          <View style={styles.segmentRow}>
-            {WEBSITE_CATEGORY_OPTIONS.map(option => (
-              <TouchableOpacity
-                key={option.value}
-                style={[styles.segment, websiteCategory === option.value && styles.segmentActive]}
-                onPress={() => setWebsiteCategory(option.value)}
-              >
-                <Text style={[styles.segmentText, websiteCategory === option.value && styles.segmentTextActive]}>
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.label}>Website Platform</Text>
-          <View style={styles.segmentRow}>
-            {WEBSITE_PLATFORM_OPTIONS.map(option => (
-              <TouchableOpacity
-                key={option.value}
-                style={[styles.segment, websitePlatform === option.value && styles.segmentActive]}
-                onPress={() => setWebsitePlatform(option.value)}
-              >
-                <Text style={[styles.segmentText, websitePlatform === option.value && styles.segmentTextActive]}>
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.checklistTitle}>Progress checklist</Text>
-          <View style={styles.checklistPreview}>
-            {suggestedChecklist.map(item => (
-              <View key={item} style={styles.checklistPreviewItem}>
-                <MaterialCommunityIcons name="checkbox-blank-circle-outline" size={16} color={theme.colors.textSubtle} />
-                <Text style={styles.checklistPreviewText}>{item}</Text>
-              </View>
-            ))}
-          </View>
-          <Text style={styles.helperText}>
-            {projectId ? 'Edit progress from the Progress tab in project details.' : 'These items will be added to the Progress tab.'}
-          </Text>
-        </View>
-      )}
-
-      <Text style={styles.label}>Client</Text>
+      <Text style={styles.label}>Client account</Text>
       <TouchableOpacity style={styles.picker} onPress={openClientModal}>
-        <Text style={clientId ? styles.pickerValue : styles.pickerPlaceholder}>
-          {selectedClient ? selectedClient.name : 'Select or add client'}
+        <Text style={clientId || clientName ? styles.pickerValue : styles.pickerPlaceholder}>
+          {selectedClient ? (selectedClient.name || selectedClient.email) : clientName || 'Link or create a client'}
         </Text>
         <MaterialCommunityIcons name="chevron-down" size={20} color={theme.colors.textSubtle} />
       </TouchableOpacity>
 
+      <Text style={styles.label}>Project Type</Text>
+      <TextInput style={styles.input} value={projectType} onChangeText={setProjectType}
+        placeholder="e.g. Web Development" placeholderTextColor={theme.colors.textSubtle} />
+
+      <Text style={styles.label}>Status</Text>
+      <View style={styles.segmentRow}>
+        {STATUSES.map(s => (
+          <TouchableOpacity key={s.value} style={[styles.segment, status === s.value && styles.segmentActive]} onPress={() => setStatus(s.value)}>
+            <Text style={[styles.segmentText, status === s.value && styles.segmentTextActive]}>{s.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={styles.label}>Priority</Text>
+      <View style={styles.segmentRow}>
+        {PRIORITIES.map(p => (
+          <TouchableOpacity key={p.value} style={[styles.segment, priority === p.value && styles.segmentActive]} onPress={() => setPriority(p.value)}>
+            <Text style={[styles.segmentText, priority === p.value && styles.segmentTextActive]}>{p.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <View style={styles.dateRow}>
         <View style={styles.dateField}>
-          <Text style={styles.label}>Date Got Project *</Text>
+          <Text style={styles.label}>Start Date</Text>
           <TouchableOpacity style={styles.picker} onPress={() => setShowStartPicker(true)}>
             <Text style={styles.pickerValue}>{formatDate(startDate.getTime())}</Text>
             <MaterialCommunityIcons name="calendar" size={18} color={theme.colors.textSubtle} />
           </TouchableOpacity>
         </View>
         <View style={styles.dateField}>
-          <Text style={styles.label}>Deadline *</Text>
-          <TouchableOpacity style={styles.picker} onPress={() => setShowDeadlinePicker(true)}>
-            <Text style={styles.pickerValue}>{formatDate(deadline.getTime())}</Text>
+          <Text style={styles.label}>Deadline</Text>
+          <TouchableOpacity style={styles.picker} onPress={() => { setHasDeadline(true); setShowDeadlinePicker(true); }}>
+            <Text style={hasDeadline ? styles.pickerValue : styles.pickerPlaceholder}>
+              {hasDeadline ? formatDate(deadline.getTime()) : 'None'}
+            </Text>
             <MaterialCommunityIcons name="calendar-clock" size={18} color={theme.colors.textSubtle} />
           </TouchableOpacity>
         </View>
       </View>
 
       {showStartPicker && (
-        <DateTimePicker
-          value={startDate}
-          mode="date"
-          display="default"
-          onChange={(_, d) => { setShowStartPicker(false); if (d) setStartDate(d); }}
-          maximumDate={deadline}
-        />
+        <DateTimePicker value={startDate} mode="date" display="default"
+          onChange={(_, d) => { setShowStartPicker(false); if (d) setStartDate(d); }} />
       )}
       {showDeadlinePicker && (
-        <DateTimePicker
-          value={deadline}
-          mode="date"
-          display="default"
-          onChange={(_, d) => { setShowDeadlinePicker(false); if (d) setDeadline(d); }}
-          minimumDate={startDate}
-        />
+        <DateTimePicker value={deadline} mode="date" display="default"
+          onChange={(_, d) => { setShowDeadlinePicker(false); if (d) setDeadline(d); }} minimumDate={startDate} />
       )}
 
       <View style={styles.dateRow}>
-        <View style={styles.dateField}>
-          <Text style={styles.label}>Budget Quoted (₹)</Text>
-          <TextInput
-            style={styles.input}
-            value={budgetQuoted}
-            onChangeText={setBudgetQuoted}
-            placeholder="0"
-            placeholderTextColor={theme.colors.textSubtle}
-            keyboardType="numeric"
-          />
+        <View style={[styles.dateField, { flex: 2 }]}>
+          <Text style={styles.label}>Budget</Text>
+          <TextInput style={styles.input} value={budget} onChangeText={setBudget}
+            placeholder="0" placeholderTextColor={theme.colors.textSubtle} keyboardType="numeric" />
         </View>
-        <View style={styles.dateField}>
-          <Text style={styles.label}>Received (₹)</Text>
-          <TextInput
-            style={styles.input}
-            value={budgetReceived}
-            onChangeText={setBudgetReceived}
-            placeholder="0"
-            placeholderTextColor={theme.colors.textSubtle}
-            keyboardType="numeric"
-          />
-        </View>
-      </View>
-
-      <Text style={styles.label}>Status</Text>
-      <View style={styles.segmentRow}>
-        {PROJECT_STATUSES.map(ps => (
+        <View style={[styles.dateField, { flex: 1 }]}>
+          <Text style={styles.label}>Currency</Text>
           <TouchableOpacity
-            key={ps.value}
-            style={[styles.segment, status === ps.value && styles.segmentActive]}
-            onPress={() => setStatus(ps.value)}
+            style={styles.picker}
+            onPress={() => {
+              const i = CURRENCIES.indexOf(currency);
+              setCurrency(CURRENCIES[(i + 1) % CURRENCIES.length]);
+            }}
           >
-            <Text style={[styles.segmentText, status === ps.value && styles.segmentTextActive]}>
-              {ps.label}
-            </Text>
+            <Text style={styles.pickerValue}>{currency}</Text>
+            <MaterialCommunityIcons name="cached" size={16} color={theme.colors.textSubtle} />
           </TouchableOpacity>
-        ))}
+        </View>
       </View>
 
-      <Text style={styles.label}>Description / Notes</Text>
-      <TextInput
-        style={[styles.input, styles.multiline]}
-        value={description}
-        onChangeText={setDescription}
-        placeholder="Project requirements, tech stack, special notes..."
-        placeholderTextColor={theme.colors.textSubtle}
-        multiline
-        numberOfLines={4}
-        textAlignVertical="top"
-      />
+      {!projectId && members.length > 0 && (
+        <>
+          <Text style={styles.label}>Assign Team</Text>
+          <View style={styles.segmentRow}>
+            {members.map(m => {
+              const sel = selectedMembers.has(m.id);
+              return (
+                <TouchableOpacity key={m.id} style={[styles.segment, sel && styles.segmentActive]} onPress={() => toggleMember(m.id)}>
+                  <Text style={[styles.segmentText, sel && styles.segmentTextActive]}>{m.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      )}
+
+      <Text style={styles.label}>Description</Text>
+      <TextInput style={[styles.input, styles.multiline]} value={description} onChangeText={setDescription}
+        placeholder="What is this project about? (visible to the client)" placeholderTextColor={theme.colors.textSubtle}
+        multiline textAlignVertical="top" />
+
+      <Text style={styles.label}>Internal Notes</Text>
+      <TextInput style={[styles.input, styles.multiline]} value={notes} onChangeText={setNotes}
+        placeholder="Internal notes (not shown to the client)" placeholderTextColor={theme.colors.textSubtle}
+        multiline textAlignVertical="top" />
 
       <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
         <LinearGradient colors={theme.gradients.primary} style={styles.saveBtnGradient}>
@@ -351,75 +289,34 @@ export default function AddEditProjectScreen({ route, navigation }: any) {
       <Modal visible={showClientModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
-
-            {/* ── ADD CLIENT FORM ── */}
             {addingClient ? (
               <>
                 <View style={styles.modalHeader}>
                   <TouchableOpacity onPress={() => setAddingClient(false)} style={styles.backBtn}>
                     <MaterialCommunityIcons name="arrow-left" size={22} color={theme.colors.textMuted} />
                   </TouchableOpacity>
-                  <Text style={styles.modalTitle}>New Client</Text>
+                  <Text style={styles.modalTitle}>New Client Account</Text>
                 </View>
-
-                <Text style={styles.fieldLabel}>Name *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newClientName}
-                  onChangeText={setNewClientName}
-                  placeholder="e.g. Rahul Sharma"
-                  placeholderTextColor={theme.colors.textSubtle}
-                  autoFocus
-                />
-
+                <Text style={styles.fieldLabel}>Name</Text>
+                <TextInput style={styles.input} value={ncName} onChangeText={setNcName} placeholder="e.g. Rahul Sharma" placeholderTextColor={theme.colors.textSubtle} />
                 <Text style={styles.fieldLabel}>Company</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newClientCompany}
-                  onChangeText={setNewClientCompany}
-                  placeholder="e.g. ABC Pvt. Ltd."
-                  placeholderTextColor={theme.colors.textSubtle}
-                />
-
+                <TextInput style={styles.input} value={ncCompany} onChangeText={setNcCompany} placeholder="ABC Pvt. Ltd." placeholderTextColor={theme.colors.textSubtle} />
                 <Text style={styles.fieldLabel}>Phone</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newClientPhone}
-                  onChangeText={setNewClientPhone}
-                  placeholder="+91 98765 43210"
-                  placeholderTextColor={theme.colors.textSubtle}
-                  keyboardType="phone-pad"
-                />
-
-                <Text style={styles.fieldLabel}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newClientEmail}
-                  onChangeText={setNewClientEmail}
-                  placeholder="client@example.com"
-                  placeholderTextColor={theme.colors.textSubtle}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-
-                <TouchableOpacity
-                  style={[styles.saveClientBtn, savingClient && { opacity: 0.6 }]}
-                  onPress={handleAddClient}
-                  disabled={savingClient}
-                >
+                <TextInput style={styles.input} value={ncPhone} onChangeText={setNcPhone} placeholder="+91 98765 43210" placeholderTextColor={theme.colors.textSubtle} keyboardType="phone-pad" />
+                <Text style={styles.fieldLabel}>Login email *</Text>
+                <TextInput style={styles.input} value={ncEmail} onChangeText={setNcEmail} placeholder="client@example.com" placeholderTextColor={theme.colors.textSubtle} keyboardType="email-address" autoCapitalize="none" />
+                <Text style={styles.fieldLabel}>Password * (min 8)</Text>
+                <TextInput style={styles.input} value={ncPassword} onChangeText={setNcPassword} placeholder="Share with the client" placeholderTextColor={theme.colors.textSubtle} autoCapitalize="none" />
+                <TouchableOpacity style={[styles.saveClientBtn, savingClient && { opacity: 0.6 }]} onPress={handleAddClient} disabled={savingClient}>
                   <LinearGradient colors={theme.gradients.primary} style={styles.saveClientBtnGradient}>
-                    {savingClient
-                      ? <ActivityIndicator color="#fff" />
-                      : <Text style={styles.saveClientBtnText}>Save Client</Text>}
+                    {savingClient ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveClientBtnText}>Create Client</Text>}
                   </LinearGradient>
                 </TouchableOpacity>
-
                 <TouchableOpacity style={styles.modalClose} onPress={() => setShowClientModal(false)}>
                   <Text style={styles.modalCloseText}>Cancel</Text>
                 </TouchableOpacity>
               </>
             ) : (
-              /* ── SELECT CLIENT LIST ── */
               <>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Select Client</Text>
@@ -428,15 +325,10 @@ export default function AddEditProjectScreen({ route, navigation }: any) {
                     <Text style={styles.addNewBtnText}>New</Text>
                   </TouchableOpacity>
                 </View>
-
-                <TouchableOpacity
-                  style={styles.noClientRow}
-                  onPress={() => { setClientId(''); setShowClientModal(false); }}
-                >
+                <TouchableOpacity style={styles.noClientRow} onPress={() => { setClientId(''); setClientName(''); setShowClientModal(false); }}>
                   <MaterialCommunityIcons name="account-off-outline" size={18} color={theme.colors.textSubtle} />
-                  <Text style={styles.noClientText}>No Client</Text>
+                  <Text style={styles.noClientText}>No client account</Text>
                 </TouchableOpacity>
-
                 <FlatList
                   data={state.clients}
                   keyExtractor={c => c.id}
@@ -444,36 +336,31 @@ export default function AddEditProjectScreen({ route, navigation }: any) {
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={[styles.clientItem, clientId === item.id && styles.clientItemActive]}
-                      onPress={() => { setClientId(item.id); setShowClientModal(false); }}
+                      onPress={() => { setClientId(item.id); setClientName(item.name); setShowClientModal(false); }}
                     >
                       <View style={styles.clientAvatar}>
-                        <Text style={styles.clientAvatarText}>{item.name.charAt(0).toUpperCase()}</Text>
+                        <Text style={styles.clientAvatarText}>{(item.name || item.email).charAt(0).toUpperCase()}</Text>
                       </View>
                       <View style={styles.clientInfo}>
-                        <Text style={styles.clientItemText}>{item.name}</Text>
+                        <Text style={styles.clientItemText}>{item.name || item.email}</Text>
                         {item.company ? <Text style={styles.clientItemSub}>{item.company}</Text> : null}
-                        {item.phone ? <Text style={styles.clientItemSub}>{item.phone}</Text> : null}
                       </View>
-                      {clientId === item.id && (
-                        <MaterialCommunityIcons name="check-circle" size={20} color={theme.colors.primary} />
-                      )}
+                      {clientId === item.id && <MaterialCommunityIcons name="check-circle" size={20} color={theme.colors.primary} />}
                     </TouchableOpacity>
                   )}
                   ListEmptyComponent={
                     <TouchableOpacity style={styles.emptyAddClient} onPress={() => setAddingClient(true)}>
                       <MaterialCommunityIcons name="account-plus-outline" size={32} color={theme.colors.textSubtle} />
                       <Text style={styles.emptyText}>No clients yet</Text>
-                      <Text style={styles.emptyAddText}>Tap to add your first client</Text>
+                      <Text style={styles.emptyAddText}>Tap to create one</Text>
                     </TouchableOpacity>
                   }
                 />
-
                 <TouchableOpacity style={styles.modalClose} onPress={() => setShowClientModal(false)}>
                   <Text style={styles.modalCloseText}>Cancel</Text>
                 </TouchableOpacity>
               </>
             )}
-
           </View>
         </View>
       </Modal>
@@ -487,124 +374,40 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   label: { fontSize: 13, fontWeight: '600', color: theme.colors.textMuted, marginBottom: 6, marginTop: 14 },
   input: {
-    backgroundColor: theme.colors.surfaceElevated,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: 12,
-    fontSize: 14,
-    color: theme.colors.text,
-    marginBottom: 2,
+    backgroundColor: theme.colors.surfaceElevated, borderRadius: 10, borderWidth: 1,
+    borderColor: theme.colors.border, padding: 12, fontSize: 14, color: theme.colors.text, marginBottom: 2,
   },
-  multiline: { minHeight: 96, paddingTop: 10 },
+  multiline: { minHeight: 90, paddingTop: 10 },
   segmentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  segment: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceElevated,
-  },
+  segment: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated },
   segmentActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
   segmentText: { fontSize: 13, color: theme.colors.textMuted },
   segmentTextActive: { color: '#fff', fontWeight: '600' },
-  websiteBox: {
-    backgroundColor: theme.colors.surfaceElevated,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: 12,
-    marginTop: 16,
-  },
-  websiteHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  websiteTitle: { fontSize: 15, fontWeight: '800', color: theme.colors.text },
-  checklistTitle: { fontSize: 12, fontWeight: '700', color: theme.colors.textMuted, marginTop: 14, marginBottom: 8, textTransform: 'uppercase' },
-  checklistPreview: { gap: 7 },
-  checklistPreviewItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  checklistPreviewText: { fontSize: 13, color: theme.colors.textMuted, flex: 1 },
-  helperText: { fontSize: 12, color: theme.colors.textSubtle, marginTop: 10, lineHeight: 17 },
   picker: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: theme.colors.surfaceElevated,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: 12,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: theme.colors.surfaceElevated, borderRadius: 10, borderWidth: 1, borderColor: theme.colors.border, padding: 12,
   },
   pickerValue: { fontSize: 14, color: theme.colors.text },
   pickerPlaceholder: { fontSize: 14, color: theme.colors.textSubtle },
   dateRow: { flexDirection: 'row', gap: 12 },
   dateField: { flex: 1 },
-  saveBtn: {
-    borderRadius: 12,
-    marginTop: 24,
-    overflow: 'hidden',
-    shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.24,
-    shadowRadius: 12,
-    elevation: 5,
-  },
+  saveBtn: { borderRadius: 12, marginTop: 24, overflow: 'hidden' },
   saveBtnGradient: { padding: 16, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   modalOverlay: { flex: 1, backgroundColor: theme.colors.overlay, justifyContent: 'flex-end' },
-  modalBox: {
-    backgroundColor: theme.colors.surfaceElevated,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '75%',
-  },
-  // modal — shared
+  modalBox: { backgroundColor: theme.colors.surfaceElevated, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '85%' },
   modalTitle: { fontSize: 17, fontWeight: '700', color: theme.colors.text, flex: 1 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 10 },
   modalClose: { paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   modalCloseText: { color: theme.colors.danger, fontSize: 15, fontWeight: '600' },
-
-  // select list mode
-  addNewBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.primary,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 4,
-  },
+  addNewBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.primary, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, gap: 4 },
   addNewBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  noClientRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.border,
-    marginBottom: 4,
-  },
+  noClientRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border, marginBottom: 4 },
   noClientText: { fontSize: 14, color: theme.colors.textMuted },
-  clientList: { maxHeight: 280 },
-  clientItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.border,
-    gap: 10,
-  },
+  clientList: { maxHeight: 260 },
+  clientItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border, gap: 10 },
   clientItemActive: { backgroundColor: theme.colors.primarySoft, borderRadius: 8 },
-  clientAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  clientAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   clientAvatarText: { fontSize: 15, fontWeight: '700', color: theme.colors.primary },
   clientInfo: { flex: 1 },
   clientItemText: { fontSize: 14, color: theme.colors.text, fontWeight: '600' },
@@ -612,15 +415,9 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   emptyAddClient: { alignItems: 'center', paddingVertical: 24, gap: 4 },
   emptyText: { color: theme.colors.textMuted, fontSize: 14, fontWeight: '600' },
   emptyAddText: { color: theme.colors.textSubtle, fontSize: 12 },
-
-  // add client form mode
   backBtn: { padding: 2 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: theme.colors.textMuted, marginBottom: 6, marginTop: 10 },
-  saveClientBtn: {
-    borderRadius: 12,
-    marginTop: 16,
-    overflow: 'hidden',
-  },
+  saveClientBtn: { borderRadius: 12, marginTop: 16, overflow: 'hidden' },
   saveClientBtnGradient: { padding: 14, alignItems: 'center' },
   saveClientBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
